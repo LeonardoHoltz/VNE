@@ -1,4 +1,11 @@
 defaults:
-  - optimizer: sgd
+  - trainer: default_trainer
+  - dataset: mnist_dataset
+  - model: mnist_fcn
+  - optimizer: adam
   - _self_
 
+epochs: 5
+device: cuda
+criterion:
+  - _target_: torch.nn.CrossEntropyLoss()
