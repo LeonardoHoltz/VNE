@@ -1,1 +1,0 @@
-from mnist_fcn import MnistFCN

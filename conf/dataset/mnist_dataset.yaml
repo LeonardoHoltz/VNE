@@ -1,2 +1,0 @@
-_target_: datasets.MnistDataset
-batch_size: 64

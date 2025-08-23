@@ -1,52 +1,45 @@
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from tqdm import tqdm
 
-from utils.builder import instantiate
+from VNE.utils.builder import instantiate
 
 class DefaultTrainer():
     def __init__(self, cfg):
         self.device = self.set_device(cfg.device)
         self.model = self.build_model(cfg.model, self.device)
         self.criterion = self.build_criterion(cfg.criterion)
-        self.optimizer = self.build_optimizer(cfg.optimizer)
+        self.optimizer = self.build_optimizer(cfg.optimizer, self.model.parameters())
         self.train_loader, self.test_loader = self.build_dataset(cfg.dataset)
         self.epochs = cfg.epochs
     
     def train(self):
         self.before_train()
-        for self.epoch in range(self.start_epoch, self.max_epoch):
+        for epoch in tqdm(range(0, self.epochs)):
             self.before_epoch()
             self.run_epoch()
             self.after_epoch()
         self.after_train()
     
     def run_epoch(self):
-        for epoch in range(1, self.epochs + 1):
-            self.run_step(epoch)
+        for batch_idx, data in enumerate(self.train_loader):
+            loss, pred = self.run_step(data)
     
-    def run_step(self, epoch):
-        total_loss, correct = 0, 0
+    def run_step(self, data):
+        X, y = data
+        X, y = X.to(self.device), y.to(self.device)
 
-        for batch_idx, (data, target) in enumerate(self.train_loader):
-            data, target = data.to(self.device), target.to(self.device)
+        # forward
+        output = self.model(X)
+        loss = self.criterion(output, y)
 
-            # forward
-            output = self.model(data)
-            loss = self.criterion(output, target)
+        # backward
+        self.optimizer.zero_grad()
+        loss.backward() # I believe NEAT dont need this
+        self.optimizer.step()
 
-            # backward
-            self.optimizer.zero_grad()
-            loss.backward() # I believe NEAT dont need this
-            self.optimizer.step()
-
-            # log metrics
-            total_loss += loss.item()
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-
-        acc = 100. * correct / len(self.train_loader.dataset)
-        print(f"Train Epoch {epoch}: Loss={total_loss/len(self.train_loader):.4f}, Acc={acc:.2f}%")
+        pred = output.argmax(dim=1, keepdim=True)
+        
+        return loss, pred
         
     def before_step(self):
         pass
@@ -78,8 +71,9 @@ class DefaultTrainer():
     def build_criterion(self, criterion_cfg):
         return instantiate(criterion_cfg)
     
-    def build_optimizer(self, optimizer_cfg):
-        return instantiate(optimizer_cfg)
+    def build_optimizer(self, optimizer_cfg, params):
+        optim_factory = instantiate(optimizer_cfg, _partial_=True)
+        return optim_factory(params)
     
     def build_dataset(self, dataset_cfg):
         dataset = instantiate(dataset_cfg)

@@ -1,0 +1,2 @@
+_target_: VNE.datasets.MnistDataset
+batch_size: 64
