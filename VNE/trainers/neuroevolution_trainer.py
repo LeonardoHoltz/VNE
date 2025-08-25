@@ -1,71 +1,62 @@
-# translation:
-# epoch = generation
-# forward = 
-
 import torch
-import torch.nn as nn
-import torch.optim as optim
+from evotorch.neuroevolution import SupervisedNE
+from evotorch.algorithms import GeneticAlgorithm
+from evotorch.operators import SimulatedBinaryCrossOver, GaussianMutation
+from evotorch.logging import StdOutLogger, PandasLogger
+from tqdm import tqdm
+import logging
 
-from utils.builder import instantiate
+from VNE.utils.builder import instantiate
 
-class DefaultTrainer():
+class NeuroEvolutionTrainer():
     def __init__(self, cfg):
         self.device = self.set_device(cfg.device)
         self.model = self.build_model(cfg.model, self.device)
         self.criterion = self.build_criterion(cfg.criterion)
-        self.optimizer = self.build_optimizer(cfg.optimizer)
-        self.train_loader, self.test_loader = self.build_dataset(cfg.dataset)
-        self.epochs = cfg.epochs
+        self.train_dataset, self.test_dataset = self.build_dataset(cfg.dataset)
+        self.generations = cfg.generations
+        
+        self.problem = SupervisedNE(
+            dataset=self.train_dataset,
+            network=self.model,
+            loss_func=self.criterion,
+            minibatch_size=cfg.dataset.batch_size,
+            common_minibatch=True,
+            num_gpus_per_actor='max',
+            num_actors=1,
+            subbatch_size=50,
+            device=self.device,
+        )
+        
+        self.searcher = GeneticAlgorithm(
+            problem=self.problem,
+            operators=[
+                SimulatedBinaryCrossOver(
+                    self.problem,
+                    tournament_size=cfg.population // 4,
+                    cross_over_rate=0.9,
+                    eta=2,
+                ),
+                GaussianMutation(
+                    self.problem,
+                    stdev=0.1,
+                    mutation_probability=0.1,
+                ),
+            ],
+            popsize=cfg.population,
+            elitist=True,
+        )        
+        
     
     def train(self):
         self.before_train()
-        for self.epoch in range(self.start_epoch, self.max_epoch):
-            self.before_epoch()
-            self.run_epoch()
-            self.after_epoch()
+        self.searcher.run(self.generations)
+        self.pandas_logger.to_dataframe().mean_eval.plot()
         self.after_train()
     
-    def run_epoch(self):
-        for epoch in range(1, self.epochs + 1):
-            self.run_step(epoch)
-    
-    def run_step(self, epoch):
-        total_loss, correct = 0, 0
-
-        for batch_idx, (data, target) in enumerate(self.train_loader):
-            data, target = data.to(self.device), target.to(self.device)
-
-            # forward
-            output = self.model(data)
-            loss = self.criterion(output, target)
-
-            # backward
-            self.optimizer.zero_grad()
-            loss.backward() # I believe NEAT dont need this
-            self.optimizer.step()
-
-            # log metrics
-            total_loss += loss.item()
-            pred = output.argmax(dim=1, keepdim=True)
-            correct += pred.eq(target.view_as(pred)).sum().item()
-
-        acc = 100. * correct / len(self.train_loader.dataset)
-        print(f"Train Epoch {epoch}: Loss={total_loss/len(self.train_loader):.4f}, Acc={acc:.2f}%")
-        
-    def before_step(self):
-        pass
-    
-    def after_step(self):
-        pass
-    
     def before_train(self):
-        self.model.train()
-    
-    def before_epoch(self):
-        pass
-    
-    def after_epoch(self):
-        pass
+        self.stdout_logger = StdOutLogger(self.searcher, interval = 1)
+        self.pandas_logger = PandasLogger(self.searcher, interval = 1)
     
     def after_train(self):
         pass
@@ -82,10 +73,7 @@ class DefaultTrainer():
     def build_criterion(self, criterion_cfg):
         return instantiate(criterion_cfg)
     
-    def build_optimizer(self, optimizer_cfg):
-        return instantiate(optimizer_cfg)
-    
     def build_dataset(self, dataset_cfg):
         dataset = instantiate(dataset_cfg)
-        return dataset.train_loader, dataset.test_loader
+        return dataset.train_dataset, dataset.test_dataset
 

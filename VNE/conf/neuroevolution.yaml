@@ -1,11 +1,12 @@
 defaults:
-  - trainer: default_trainer
+  - trainer: neuroevolution_trainer
   - dataset: mnist_dataset
   - model: mnist_fcn
   - optimizer: adam
   - _self_
 
-epochs: 5
+generations: 200
+population: 1500
 device: cuda
 criterion:
   _target_: torch.nn.CrossEntropyLoss

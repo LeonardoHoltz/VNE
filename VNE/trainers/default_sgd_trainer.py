@@ -1,9 +1,10 @@
 import torch
 from tqdm import tqdm
+import logging
 
 from VNE.utils.builder import instantiate
 
-class DefaultTrainer():
+class DefaultSGDTrainer():
     def __init__(self, cfg):
         self.device = self.set_device(cfg.device)
         self.model = self.build_model(cfg.model, self.device)
@@ -11,18 +12,26 @@ class DefaultTrainer():
         self.optimizer = self.build_optimizer(cfg.optimizer, self.model.parameters())
         self.train_loader, self.test_loader = self.build_dataset(cfg.dataset)
         self.epochs = cfg.epochs
+        
+        logging.basicConfig(level=logging.INFO,
+                            format='[%(levelname)s] %(message)s)'
+        )
+        self.logger = logging.getLogger(__name__)
     
     def train(self):
         self.before_train()
-        for epoch in tqdm(range(0, self.epochs)):
-            self.before_epoch()
+        for cur_epoch in range(1, self.epochs+1):
+            self.before_epoch(cur_epoch)
             self.run_epoch()
             self.after_epoch()
         self.after_train()
     
     def run_epoch(self):
-        for batch_idx, data in enumerate(self.train_loader):
-            loss, pred = self.run_step(data)
+        with tqdm(total=len(self.train_loader), disable=False) as pbar:
+            for batch_idx, data in enumerate(self.train_loader):
+                loss, pred = self.run_step(data)
+                pbar.set_description(f"Loss: {loss.item()}")
+                pbar.update(1)
     
     def run_step(self, data):
         X, y = data
@@ -50,8 +59,8 @@ class DefaultTrainer():
     def before_train(self):
         self.model.train()
     
-    def before_epoch(self):
-        pass
+    def before_epoch(self, cur_epoch):
+        self.logger.info(f"Epoch [{cur_epoch}/{self.epochs}]:")
     
     def after_epoch(self):
         pass
